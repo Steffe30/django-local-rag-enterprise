@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      - POSTGRES_DB=rag_db
+      - POSTGRES_USER=rag_user
+      - POSTGRES_PASSWORD=rag_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+
+  web:
+    build: ./backend
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgres://rag_user:rag_pass@db:5432/rag_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    depends_on:
+      - db
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  worker:
+    build: ./backend
+    command: celery -A core worker -l info
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgres://rag_user:rag_pass@db:5432/rag_db
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    depends_on:
+      - db
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres_data:
